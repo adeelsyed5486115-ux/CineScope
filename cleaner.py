@@ -1,53 +1,60 @@
-"""Data validation, cleaning and transformation for movie data."""
+
+"""Data cleaning and validation module for CineScope."""
 
 import json
 from pathlib import Path
+from typing import Optional, Any
 
 import pandas as pd
-import requests
 from pydantic import BaseModel, Field, ValidationError
 
-from extractor import get_genres
 
-
-# -----------------------------------
-# 1. Pydantic Movie Model
-# -----------------------------------
+# ==========================================
+# 1. MOVIE DATA MODEL
+# ==========================================
 
 class Movie(BaseModel):
+    """Validate individual movie records."""
 
-    id: int | None = None
-    title: str | None = None
-    release_date: str | None = None
-    vote_average: float | None = None
-    vote_count: int | None = None
+    id: Optional[int] = None
+    title: Optional[str] = None
+    release_date: Optional[str] = None
+    vote_average: float = 0.0
+    vote_count: int = 0
+
     genre_ids: list[int] = Field(default_factory=list)
+    genres: list[dict[str, Any]] = Field(default_factory=list)
 
 
-# -----------------------------------
-# 2. Load Raw JSON Data
-# -----------------------------------
+# ==========================================
+# 2. LOAD RAW DATA
+# ==========================================
 
-def load_raw_data(filename: str = "raw_movies.json") -> list[dict]:
-    """Load raw movie data from JSON file."""
+def load_raw_data(
+    filename: str = "raw_movies.json"
+) -> list[dict]:
 
-    file_path = Path(__file__).resolve().parent / filename
+    file_path = Path(filename)
+
+    if not file_path.exists():
+        raise FileNotFoundError(
+            f"Raw data file not found: {filename}"
+        )
 
     with open(file_path, "r", encoding="utf-8") as file:
         data = json.load(file)
 
     if not isinstance(data, list):
-        raise ValueError("JSON file must contain a list of movies.")
+        raise ValueError("Raw data must be a list.")
 
     return data
 
 
-# -----------------------------------
-# 3. Validate Movie Data
-# -----------------------------------
+# ==========================================
+# 3. VALIDATE MOVIES
+# ==========================================
 
-def validate_movies(raw_movies: list[dict]) -> list[dict]:
-    """Validate raw movie records using Pydantic."""
+def validate_movies(raw_movies: list[dict]) -> list[Movie]:
 
     valid_movies = []
 
@@ -56,183 +63,214 @@ def validate_movies(raw_movies: list[dict]) -> list[dict]:
         try:
             movie = Movie(**movie_data)
 
-            valid_movies.append(movie.__dict__)
+            if movie.id is None or not movie.title:
+                continue
 
-        except ValidationError as error:
-            print("Invalid movie record skipped:", error)
+            valid_movies.append(movie)
 
-        except (TypeError, ValueError) as error:
-            print("Invalid movie data skipped:", error)
-
-    print(f"Valid movies: {len(valid_movies)}")
-    print(f"Invalid movies: {len(raw_movies) - len(valid_movies)}")
+        except (ValidationError, TypeError, ValueError) as error:
+            print(f"Invalid movie skipped: {error}")
 
     return valid_movies
 
 
-# -----------------------------------
-# 4. Convert Genre IDs to Names
-# -----------------------------------
+# ==========================================
+# 4. CONVERT GENRES
+# ==========================================
 
 def convert_genres(
     genre_ids: list[int],
-    genre_map: dict[int, str]
+    genre_map: dict[int, str],
+    genres: Optional[list[dict]] = None
 ) -> str:
-    """Convert TMDB genre IDs into readable genre names."""
+    """Convert genre IDs or genre objects into names."""
 
-    genre_names = [
-        genre_map[genre_id]
-        for genre_id in genre_ids
-        if genre_id in genre_map
-    ]
+    genre_names = []
+
+    # First use genre names if TMDB provided them
+    if genres:
+
+        for genre in genres:
+
+            if isinstance(genre, dict):
+                name = genre.get("name")
+
+                if name:
+                    genre_names.append(name)
+
+            elif isinstance(genre, str):
+                genre_names.append(genre)
+
+    # Otherwise convert genre IDs
+    if not genre_names:
+
+        for genre_id in genre_ids:
+
+            name = genre_map.get(genre_id)
+
+            if name:
+                genre_names.append(name)
+
+    # Remove duplicate genre names
+    genre_names = list(dict.fromkeys(genre_names))
 
     return ", ".join(genre_names) if genre_names else "Unknown"
 
 
-# -----------------------------------
-# 5. Clean and Transform Data
-# -----------------------------------
+# ==========================================
+# 5. CLEAN MOVIES
+# ==========================================
 
 def clean_movies(
-    movies: list[dict],
-    genre_map: dict[int, str]
+    movies: list[Movie],
+    genre_map: Optional[dict[int, str]] = None
 ) -> pd.DataFrame:
-    """Clean and transform validated movie data."""
+    """Clean and transform validated movie records."""
 
-    df = pd.DataFrame(movies)
+    # Automatically fetch genre mapping if not supplied
+    if genre_map is None:
+
+        from extractor import get_genres
+
+        genre_map = get_genres()
+
+    cleaned_records = []
+
+    for movie in movies:
+
+        release_date = movie.release_date or "Unknown"
+
+        release_year = (
+            int(release_date[:4])
+            if release_date != "Unknown"
+            and release_date[:4].isdigit()
+            else None
+        )
+
+        genre = convert_genres(
+            movie.genre_ids,
+            genre_map,
+            movie.genres
+        )
+
+        cleaned_records.append({
+
+            "id": movie.id,
+            "title": movie.title.strip(),
+
+            "release_date": release_date,
+            "release_year": release_year,
+
+            "vote_average": movie.vote_average,
+            "vote_count": movie.vote_count,
+
+            "genre": genre,
+
+            # Compatibility with existing app
+            "rating": movie.vote_average,
+            "votes": movie.vote_count
+        })
+
+    df = pd.DataFrame(cleaned_records)
 
     if df.empty:
         return df
 
-    # Remove movies without a title
-    df["title"] = df["title"].fillna("").astype(str).str.strip()
+    # Remove empty titles
+    df["title"] = df["title"].fillna("").str.strip()
+    df = df[df["title"] != ""]
 
-    df = df[df["title"] != ""].copy()
-
-    # Remove duplicate movies using TMDB ID
-    df = df.drop_duplicates(subset=["id"], keep="first")
-
-    # Handle missing release dates
-    df["release_date"] = (
-        df["release_date"].fillna("").astype(str).str.strip()
+    # Remove duplicate movie IDs
+    df = df.drop_duplicates(
+        subset=["id"],
+        keep="first"
     )
 
-    df.loc[df["release_date"] == "", "release_date"] = "Unknown"
+    # Handle missing values
+    df["release_date"] = df["release_date"].fillna("Unknown")
+    df["genre"] = df["genre"].fillna("Unknown")
 
-    # Convert rating into numeric values
+    # Numeric conversion
     df["vote_average"] = pd.to_numeric(
-        df["vote_average"], errors="coerce"
-    )
+        df["vote_average"],
+        errors="coerce"
+    ).fillna(0)
 
-    # Handle missing vote counts
     df["vote_count"] = pd.to_numeric(
-        df["vote_count"], errors="coerce"
+        df["vote_count"],
+        errors="coerce"
     ).fillna(0).astype(int)
 
-    # Convert genre IDs into genre names
-    df["genre"] = df["genre_ids"].apply(
-        lambda ids: convert_genres(ids, genre_map)
-    )
+    # Synchronize compatibility columns
+    df["rating"] = df["vote_average"]
+    df["votes"] = df["vote_count"]
 
-    # Extract release year
-    release_dates = pd.to_datetime(
-        df["release_date"], errors="coerce"
-    )
-
-    df["release_year"] = release_dates.dt.year.astype("Int64")
-
-    # Remove original genre ID column
-    df = df.drop(columns=["genre_ids"])
-
-    # Arrange final columns
-    df = df[
-        [
-            "id",
-            "title",
-            "release_date",
-            "release_year",
-            "vote_average",
-            "vote_count",
-            "genre"
-        ]
-    ]
-
-    df = df.reset_index(drop=True)
-
-    return df
+    return df.reset_index(drop=True)
 
 
-# -----------------------------------
-# 6. Save Cleaned Data
-# -----------------------------------
+# ==========================================
+# 6. SAVE CLEANED DATA
+# ==========================================
 
 def save_cleaned_data(
     df: pd.DataFrame,
     filename: str = "cleaned_movies.csv"
 ) -> None:
-    """Save cleaned movie data into CSV format."""
 
-    file_path = Path(__file__).resolve().parent / filename
+    if df.empty:
+        print("No cleaned data available.")
+        return
 
-    df.to_csv(file_path, index=False, encoding="utf-8-sig")
+    file_path = Path(filename)
+
+    if not file_path.is_absolute():
+        file_path = Path(__file__).resolve().parent / file_path
+
+    df.to_csv(
+        file_path,
+        index=False,
+        encoding="utf-8"
+    )
 
     print(f"Cleaned data saved to: {file_path}")
 
 
-# -----------------------------------
-# 7. Main Pipeline
-# -----------------------------------
+# ==========================================
+# 7. COMPLETE ETL PIPELINE
+# ==========================================
 
-def main() -> None:
-    """Run the complete data cleaning pipeline."""
+def main():
 
-    try:
+    print("Loading raw movie data...")
 
-        # Load raw data
-        raw_movies = load_raw_data()
+    raw_movies = load_raw_data()
 
-        print(f"Raw movies loaded: {len(raw_movies)}")
+    print("Validating movies...")
 
-        # Validate data
-        valid_movies = validate_movies(raw_movies)
+    validated_movies = validate_movies(raw_movies)
 
-        if not valid_movies:
-            print("No valid movie records available.")
-            return
+    print("Loading genre mapping...")
 
-        # Get TMDB genre information
-        genre_map = get_genres()
+    from extractor import get_genres
+    genre_map = get_genres()
 
-        # Clean and transform data
-        cleaned_df = clean_movies(valid_movies, genre_map)
+    print("Cleaning movie data...")
 
-        if cleaned_df.empty:
-            print("No movies available after cleaning.")
-            return
+    cleaned_df = clean_movies(
+        validated_movies,
+        genre_map
+    )
 
-        # Save cleaned data
-        save_cleaned_data(cleaned_df)
+    print("Saving cleaned data...")
 
-        # Display results
-        print("\nCleaned Movie Data:")
-        print(cleaned_df.head())
+    save_cleaned_data(cleaned_df)
 
-        print("\nDataset Information:")
-        print(cleaned_df.info())
+    print("\nETL cleaning completed!")
 
-        print("\nCleaning completed successfully!")
+    print("\nDataset Preview:")
+    print(cleaned_df.head())
 
-    except FileNotFoundError:
-        print("Error: raw_movies.json file not found.")
-
-    except json.JSONDecodeError:
-        print("Error: Invalid JSON file.")
-
-    except requests.RequestException as error:
-        print("TMDB API error:", error)
-
-    except (ValueError, TypeError) as error:
-        print("Data processing error:", error)
+    print("\nTotal Movies:", len(cleaned_df))
 
 
 if __name__ == "__main__":

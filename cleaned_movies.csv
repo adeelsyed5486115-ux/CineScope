@@ -1,21 +1,21 @@
-﻿id,title,release_date,release_year,vote_average,vote_count,genre
-1003596,Avengers: Doomsday,2026-12-16,2026,0.0,0,"Science Fiction, Action, Adventure"
-299536,Avengers: Infinity War,2018-04-25,2018,8.247,33322,"Adventure, Action, Science Fiction"
-299534,Avengers: Endgame,2019-04-24,2019,8.247,29203,"Adventure, Science Fiction, Action"
-24428,The Avengers,2012-04-25,2012,8.1,40255,"Science Fiction, Action, Adventure"
-99861,Avengers: Age of Ultron,2015-04-22,2015,7.278,25284,"Action, Adventure, Science Fiction"
-1003598,Avengers: Secret Wars,2027-12-15,2027,0.0,0,"Science Fiction, Action, Adventure"
-9320,The Avengers,1998-08-13,1998,4.441,820,"Action, Adventure, Thriller, Science Fiction, Comedy"
-323660,Avengers Grimm,2015-03-17,2015,4.1,133,"Action, Fantasy"
-1750432,Spidey and the Avengers: Halloween Team-Up!,2026-09-24,2026,6.571,14,"Animation, Adventure, Fantasy, Family"
-40081,Crippled Avengers,1978-12-21,1978,6.8,108,"Action, Drama"
-14611,Ultimate Avengers 2,2006-08-08,2006,6.8,336,"Adventure, Animation, Action, Science Fiction"
-347158,Bikini Avengers,2015-02-24,2015,5.9,34,Comedy
-1359227,LEGO Marvel Avengers: Mission Demolition,2024-10-17,2024,6.5,132,"Animation, Comedy, Science Fiction"
-1154598,LEGO Marvel Avengers: Code Red,2023-10-26,2023,6.5,167,"Animation, Action, Family, Science Fiction"
-257346,Avengers Confidential: Black Widow & Punisher,2014-04-19,2014,6.368,303,"Animation, Science Fiction, Action"
-432413,The Avengers,1950-06-10,1950,8.5,2,Adventure
-63441,Masked Avengers,1981-05-15,1981,6.9,35,"Action, Drama"
-14609,Ultimate Avengers: The Movie,2006-02-21,2006,6.9,416,"Action, Animation, Family, Adventure, Science Fiction"
-58906,Alien Avengers,1996-08-03,1996,6.2,11,"Comedy, Science Fiction, TV Movie"
-1461138,Shaolin Avengers,2025-03-10,2025,0.0,0,Action
+id,title,release_date,release_year,vote_average,vote_count,genre,rating,votes
+1003596,Avengers: Doomsday,2026-12-16,2026,0.0,0,"Science Fiction, Action, Adventure",0.0,0
+299534,Avengers: Endgame,2019-04-24,2019,8.247,29220,"Adventure, Science Fiction, Action",8.247,29220
+24428,The Avengers,2012-04-25,2012,8.083,40272,"Science Fiction, Action, Adventure",8.083,40272
+299536,Avengers: Infinity War,2018-04-25,2018,8.246,33335,"Adventure, Action, Science Fiction",8.246,33335
+99861,Avengers: Age of Ultron,2015-04-22,2015,7.278,25292,"Action, Adventure, Science Fiction",7.278,25292
+1003598,Avengers: Secret Wars,2027-12-15,2027,0.0,0,"Science Fiction, Action, Adventure",0.0,0
+432413,The Avengers,1950-06-10,1950,8.5,2,Adventure,8.5,2
+9320,The Avengers,1998-08-13,1998,4.443,822,"Action, Adventure, Thriller, Science Fiction, Comedy",4.443,822
+323660,Avengers Grimm,2015-03-17,2015,4.1,133,"Action, Fantasy",4.1,133
+1359227,LEGO Marvel Avengers: Mission Demolition,2024-10-17,2024,6.5,132,"Animation, Comedy, Science Fiction",6.5,132
+347158,Bikini Avengers,2015-02-24,2015,5.9,34,Comedy,5.9,34
+40081,Crippled Avengers,1978-12-21,1978,6.821,109,"Action, Drama",6.821,109
+1461138,Shaolin Avengers,2025-03-10,2025,0.0,0,Action,0.0,0
+1750432,Spidey and the Avengers: Halloween Team-Up!,2026-09-24,2026,6.571,14,"Animation, Adventure, Fantasy, Family",6.571,14
+257346,Avengers Confidential: Black Widow & Punisher,2014-04-19,2014,6.368,303,"Animation, Science Fiction, Action",6.368,303
+58906,Alien Avengers,1996-08-03,1996,6.2,11,"Comedy, Science Fiction, TV Movie",6.2,11
+14609,Ultimate Avengers: The Movie,2006-02-21,2006,6.9,416,"Action, Animation, Family, Adventure, Science Fiction",6.9,416
+63441,Masked Avengers,1981-05-15,1981,6.9,35,"Action, Drama",6.9,35
+14611,Ultimate Avengers 2,2006-08-08,2006,6.8,336,"Adventure, Animation, Action, Science Fiction",6.8,336
+1154598,LEGO Marvel Avengers: Code Red,2023-10-26,2023,6.5,167,"Animation, Action, Family, Science Fiction",6.5,167

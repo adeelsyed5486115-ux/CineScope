@@ -1,343 +1,494 @@
 
-"""Exploratory Data Analysis and Visualization for Movie Data."""
+"""Exploratory Data Analysis module for Movie Rating & Data Explorer."""
 
-import sqlite3
 from pathlib import Path
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
 
-# -----------------------------------
-# 1. Project Paths
-# -----------------------------------
+# --------------------------------------------------
+# 1. LOAD CLEANED MOVIE DATA
+# --------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent
+def load_movies(
+    filename: str = "cleaned_movies.csv"
+) -> pd.DataFrame:
+    """Load cleaned movie dataset from CSV."""
 
-DATABASE_FILE = BASE_DIR / "movies.db"
+    file_path = Path(filename)
 
-CHARTS_DIR = BASE_DIR / "charts"
+    if not file_path.is_absolute():
+        file_path = Path(__file__).resolve().parent / file_path
 
-
-# -----------------------------------
-# 2. Load Data from Database
-# -----------------------------------
-
-def load_movies() -> pd.DataFrame:
-    """Load movie records from SQLite database."""
-
-    if not DATABASE_FILE.exists():
+    if not file_path.exists():
         raise FileNotFoundError(
-            "movies.db not found. Run database.py first."
+            f"Cleaned dataset not found: {file_path}"
         )
 
-    connection = sqlite3.connect(DATABASE_FILE)
+    return pd.read_csv(file_path)
 
-    try:
-        df = pd.read_sql_query(
-            "SELECT * FROM movies",
-            connection
+
+# --------------------------------------------------
+# 2. PREPARE DATA
+# --------------------------------------------------
+
+def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare movie data for exploratory analysis."""
+
+    df = df.copy()
+
+    if "vote_average" not in df.columns and "rating" in df.columns:
+        df["vote_average"] = df["rating"]
+
+    if "vote_count" not in df.columns and "votes" in df.columns:
+        df["vote_count"] = df["votes"]
+
+    if "vote_average" in df.columns:
+        df["vote_average"] = pd.to_numeric(
+            df["vote_average"],
+            errors="coerce"
         )
 
-    finally:
-        connection.close()
+    if "vote_count" in df.columns:
+        df["vote_count"] = pd.to_numeric(
+            df["vote_count"],
+            errors="coerce"
+        ).fillna(0)
 
-    if df.empty:
-        raise ValueError("No movie records found in database.")
+    if "release_year" in df.columns:
+        df["release_year"] = pd.to_numeric(
+            df["release_year"],
+            errors="coerce"
+        )
 
     return df
 
 
-# -----------------------------------
-# 3. Dataset Summary
-# -----------------------------------
+# --------------------------------------------------
+# 3. DATASET SUMMARY
+# --------------------------------------------------
 
 def dataset_summary(df: pd.DataFrame) -> dict:
-    """Generate a summary of the movie dataset."""
+    """Return important statistics about the movie dataset."""
 
-    summary = {
+    df = prepare_data(df)
+
+    if df.empty:
+        return {
+            "total_movies": 0,
+            "average_rating": 0.0,
+            "highest_rating": 0.0,
+            "lowest_rating": 0.0,
+            "total_votes": 0
+        }
+
+    ratings = df["vote_average"].dropna()
+
+    return {
         "total_movies": len(df),
+
         "average_rating": round(
-            df["vote_average"].mean(), 2
-        ),
+            ratings.mean(), 2
+        ) if not ratings.empty else 0.0,
+
+        "highest_rating": round(
+            ratings.max(), 2
+        ) if not ratings.empty else 0.0,
+
+        "lowest_rating": round(
+            ratings.min(), 2
+        ) if not ratings.empty else 0.0,
+
         "total_votes": int(
-            df["vote_count"].fillna(0).sum()
-        ),
-        "unique_genres": (
-            df["genre"].dropna().nunique()
-        ),
-        "missing_values": int(
-            df.isnull().sum().sum()
-        )
+            df["vote_count"].sum()
+        ) if "vote_count" in df.columns else 0
     }
 
-    return summary
 
-
-# -----------------------------------
-# 4. Top Rated Movies
-# -----------------------------------
+# --------------------------------------------------
+# 4. TOP RATED MOVIES
+# --------------------------------------------------
 
 def top_rated_movies(
     df: pd.DataFrame,
-    limit: int = 10,
-    min_votes: int = 10
+    n: int = 10
 ) -> pd.DataFrame:
-    """Find the highest-rated movies."""
+    """Return highest rated movies."""
 
-    filtered_df = df[
-        (df["vote_average"].notna()) &
-        (df["vote_count"] >= min_votes)
-    ].copy()
+    df = prepare_data(df)
 
-    return filtered_df.sort_values(
-        by="vote_average",
-        ascending=False
-    ).head(limit)
+    return (
+        df.sort_values(
+            by="vote_average",
+            ascending=False
+        )
+        .head(n)
+        .reset_index(drop=True)
+    )
 
 
-# -----------------------------------
-# 5. Genre Analysis
-# -----------------------------------
+# --------------------------------------------------
+# 5. LOWEST RATED MOVIES
+# --------------------------------------------------
 
-def genre_analysis(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate average rating and movie count by genre."""
+def lowest_rated_movies(
+    df: pd.DataFrame,
+    n: int = 10
+) -> pd.DataFrame:
+    """Return lowest rated movies."""
 
-    genre_df = df[
-        ["genre", "vote_average"]
-    ].dropna().copy()
+    df = prepare_data(df)
 
-    genre_df["genre"] = genre_df["genre"].str.split(", ")
+    return (
+        df.sort_values(
+            by="vote_average",
+            ascending=True
+        )
+        .head(n)
+        .reset_index(drop=True)
+    )
+
+
+# --------------------------------------------------
+# 6. GENRE-WISE MOVIE COUNT
+# --------------------------------------------------
+
+def genre_movie_count(
+    df: pd.DataFrame
+) -> pd.Series:
+    """Calculate the number of movies in each genre."""
+
+    if df.empty or "genre" not in df.columns:
+        return pd.Series(dtype=int)
+
+    genres = (
+        df["genre"]
+        .fillna("")
+        .astype(str)
+        .str.split(",")
+        .explode()
+        .str.strip()
+    )
+
+    genres = genres[
+        (genres != "")
+        & (genres.str.lower() != "unknown")
+    ]
+
+    return genres.value_counts()
+
+
+# --------------------------------------------------
+# 7. GENRE-WISE AVERAGE RATING
+# --------------------------------------------------
+
+def genre_average_rating(
+    df: pd.DataFrame
+) -> pd.Series:
+    """Calculate average rating for every genre."""
+
+    df = prepare_data(df)
+
+    if df.empty or "genre" not in df.columns:
+        return pd.Series(dtype=float)
+
+    genre_df = df[["genre", "vote_average"]].copy()
+
+    genre_df["genre"] = (
+        genre_df["genre"]
+        .fillna("")
+        .astype(str)
+        .str.split(",")
+    )
 
     genre_df = genre_df.explode("genre")
 
+    genre_df["genre"] = genre_df["genre"].str.strip()
+
     genre_df = genre_df[
-        genre_df["genre"] != "Unknown"
+        (genre_df["genre"] != "")
+        & (genre_df["genre"].str.lower() != "unknown")
     ]
 
-    result = (
-        genre_df.groupby("genre")
-        .agg(
-            average_rating=("vote_average", "mean"),
-            movie_count=("vote_average", "count")
-        )
+    return (
+        genre_df.groupby("genre")["vote_average"]
+        .mean()
         .round(2)
-        .sort_values(
-            by="average_rating",
+        .sort_values(ascending=False)
+    )
+
+
+# --------------------------------------------------
+# 8. RATING DISTRIBUTION
+# --------------------------------------------------
+
+def rating_distribution(
+    df: pd.DataFrame
+) -> pd.Series:
+    """Calculate the distribution of movie ratings."""
+
+    df = prepare_data(df)
+
+    if df.empty:
+        return pd.Series(dtype=int)
+
+    ratings = df["vote_average"].dropna()
+
+    bins = [
+        0, 2, 4, 6, 8, 10
+    ]
+
+    labels = [
+        "0-2",
+        "2-4",
+        "4-6",
+        "6-8",
+        "8-10"
+    ]
+
+    return pd.cut(
+        ratings,
+        bins=bins,
+        labels=labels,
+        include_lowest=True
+    ).value_counts().sort_index()
+
+
+# --------------------------------------------------
+# 9. RELEASE YEAR ANALYSIS
+# --------------------------------------------------
+
+def movies_by_year(
+    df: pd.DataFrame
+) -> pd.Series:
+    """Calculate the number of movies released each year."""
+
+    df = prepare_data(df)
+
+    if df.empty or "release_year" not in df.columns:
+        return pd.Series(dtype=int)
+
+    years = df["release_year"].dropna()
+
+    return (
+        years.value_counts()
+        .sort_index()
+        .astype(int)
+    )
+
+
+# --------------------------------------------------
+# 10. MOST POPULAR MOVIES
+# --------------------------------------------------
+
+def most_voted_movies(
+    df: pd.DataFrame,
+    n: int = 10
+) -> pd.DataFrame:
+    """Return movies with the highest number of votes."""
+
+    df = prepare_data(df)
+
+    if "vote_count" not in df.columns:
+        return pd.DataFrame()
+
+    return (
+        df.sort_values(
+            by="vote_count",
             ascending=False
         )
+        .head(n)
+        .reset_index(drop=True)
     )
 
-    return result
 
+# --------------------------------------------------
+# 11. GENRE COUNT CHART
+# --------------------------------------------------
 
-# -----------------------------------
-# 6. Year Analysis
-# -----------------------------------
+def plot_genre_distribution(
+    df: pd.DataFrame
+):
+    """Create a bar chart showing movies by genre."""
 
-def year_analysis(df: pd.DataFrame) -> pd.DataFrame:
-    """Analyze movie count and average rating by year."""
+    genre_counts = genre_movie_count(df)
 
-    year_df = df.dropna(
-        subset=["release_year"]
-    ).copy()
+    if genre_counts.empty:
+        return None
 
-    result = (
-        year_df.groupby("release_year")
-        .agg(
-            movie_count=("id", "count"),
-            average_rating=("vote_average", "mean")
-        )
-        .round(2)
-        .sort_index()
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    genre_counts.plot(
+        kind="bar",
+        ax=ax
     )
 
-    return result
+    ax.set_title("Movies by Genre")
+    ax.set_xlabel("Genre")
+    ax.set_ylabel("Number of Movies")
+    ax.tick_params(axis="x", rotation=45)
+
+    fig.tight_layout()
+
+    return fig
 
 
-# -----------------------------------
-# 7. Create Charts Folder
-# -----------------------------------
-
-def create_charts_folder() -> None:
-    """Create folder for saving visualizations."""
-
-    CHARTS_DIR.mkdir(exist_ok=True)
-
-
-# -----------------------------------
-# 8. Genre Rating Chart
-# -----------------------------------
+# --------------------------------------------------
+# 12. GENRE AVERAGE RATING CHART
+# --------------------------------------------------
 
 def plot_genre_ratings(
-    genre_df: pd.DataFrame
-) -> None:
-    """Create a bar chart of average genre ratings."""
+    df: pd.DataFrame
+):
+    """Create a chart showing average rating by genre."""
 
-    if genre_df.empty:
-        print("No genre data available.")
-        return
+    average_ratings = genre_average_rating(df)
 
-    chart_data = genre_df.sort_values(
-        "average_rating"
+    if average_ratings.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    average_ratings.plot(
+        kind="bar",
+        ax=ax
     )
 
-    plt.figure(figsize=(10, 6))
+    ax.set_title("Average Rating by Genre")
+    ax.set_xlabel("Genre")
+    ax.set_ylabel("Average Rating")
+    ax.tick_params(axis="x", rotation=45)
 
-    plt.barh(
-        chart_data.index,
-        chart_data["average_rating"]
+    fig.tight_layout()
+
+    return fig
+
+
+# --------------------------------------------------
+# 13. RATING DISTRIBUTION CHART
+# --------------------------------------------------
+
+def plot_rating_distribution(
+    df: pd.DataFrame
+):
+    """Create a chart showing movie rating distribution."""
+
+    df = prepare_data(df)
+
+    if df.empty:
+        return None
+
+    ratings = df["vote_average"].dropna()
+
+    if ratings.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    ax.hist(
+        ratings,
+        bins=10,
+        edgecolor="black"
     )
 
-    plt.title("Average Movie Rating by Genre")
-    plt.xlabel("Average Rating")
-    plt.ylabel("Genre")
+    ax.set_title("Movie Rating Distribution")
+    ax.set_xlabel("Movie Rating")
+    ax.set_ylabel("Number of Movies")
 
-    plt.tight_layout()
+    fig.tight_layout()
 
-    plt.savefig(
-        CHARTS_DIR / "genre_ratings.png"
+    return fig
+
+
+# --------------------------------------------------
+# 14. RELEASE YEAR CHART
+# --------------------------------------------------
+
+def plot_movies_by_year(
+    df: pd.DataFrame
+):
+    """Create a chart showing movies released by year."""
+
+    year_counts = movies_by_year(df)
+
+    if year_counts.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    year_counts.plot(
+        kind="line",
+        marker="o",
+        ax=ax
     )
 
-    plt.close()
+    ax.set_title("Movies Released by Year")
+    ax.set_xlabel("Release Year")
+    ax.set_ylabel("Number of Movies")
+
+    fig.tight_layout()
+
+    return fig
 
 
-# -----------------------------------
-# 9. Movie Count Chart
-# -----------------------------------
+# --------------------------------------------------
+# 15. COMPLETE EDA SUMMARY
+# --------------------------------------------------
 
-def plot_movie_counts(
-    genre_df: pd.DataFrame
-) -> None:
-    """Create a bar chart of movies in each genre."""
+def generate_eda_report(
+    df: pd.DataFrame
+) -> dict:
+    """Generate a complete exploratory data analysis report."""
 
-    if genre_df.empty:
-        print("No genre data available.")
-        return
+    df = prepare_data(df)
 
-    chart_data = genre_df.sort_values(
-        "movie_count",
-        ascending=False
-    )
-
-    plt.figure(figsize=(10, 6))
-
-    plt.bar(
-        chart_data.index,
-        chart_data["movie_count"]
-    )
-
-    plt.title("Number of Movies by Genre")
-    plt.xlabel("Genre")
-    plt.ylabel("Movie Count")
-
-    plt.xticks(rotation=45, ha="right")
-
-    plt.tight_layout()
-
-    plt.savefig(
-        CHARTS_DIR / "genre_movie_counts.png"
-    )
-
-    plt.close()
+    return {
+        "dataset_summary": dataset_summary(df),
+        "top_rated_movies": top_rated_movies(df),
+        "lowest_rated_movies": lowest_rated_movies(df),
+        "genre_movie_count": genre_movie_count(df),
+        "genre_average_rating": genre_average_rating(df),
+        "rating_distribution": rating_distribution(df),
+        "movies_by_year": movies_by_year(df),
+        "most_voted_movies": most_voted_movies(df)
+    }
 
 
-# -----------------------------------
-# 10. Yearly Movie Trend Chart
-# -----------------------------------
-
-def plot_yearly_trend(
-    year_df: pd.DataFrame
-) -> None:
-    """Create a line chart showing yearly movie counts."""
-
-    if year_df.empty:
-        print("No release year data available.")
-        return
-
-    plt.figure(figsize=(10, 6))
-
-    plt.plot(
-        year_df.index,
-        year_df["movie_count"],
-        marker="o"
-    )
-
-    plt.title("Movie Releases by Year")
-    plt.xlabel("Release Year")
-    plt.ylabel("Number of Movies")
-
-    plt.grid(True)
-
-    plt.tight_layout()
-
-    plt.savefig(
-        CHARTS_DIR / "yearly_movie_trend.png"
-    )
-
-    plt.close()
-
-
-# -----------------------------------
-# 11. Main EDA Pipeline
-# -----------------------------------
-
-def main() -> None:
-    """Run complete EDA and visualization pipeline."""
-
-    try:
-
-        # Load database records
-        df = load_movies()
-
-        print("\n========== DATASET SUMMARY ==========")
-
-        summary = dataset_summary(df)
-
-        for key, value in summary.items():
-            print(f"{key}: {value}")
-
-        # Top rated movies
-        print("\n========== TOP RATED MOVIES ==========")
-
-        top_movies = top_rated_movies(df)
-
-        print(
-            top_movies[
-                ["title", "vote_average", "vote_count"]
-            ].to_string(index=False)
-        )
-
-        # Genre analysis
-        print("\n========== GENRE ANALYSIS ==========")
-
-        genre_df = genre_analysis(df)
-
-        print(genre_df)
-
-        # Year analysis
-        print("\n========== YEAR ANALYSIS ==========")
-
-        year_df = year_analysis(df)
-
-        print(year_df)
-
-        # Generate visualizations
-        create_charts_folder()
-
-        plot_genre_ratings(genre_df)
-
-        plot_movie_counts(genre_df)
-
-        plot_yearly_trend(year_df)
-
-        print("\n========== EDA COMPLETED ==========")
-
-        print("All charts saved inside the charts folder.")
-
-    except (FileNotFoundError, ValueError, sqlite3.Error) as error:
-        print("EDA Error:", error)
-
+# --------------------------------------------------
+# 16. TEST EDA MODULE
+# --------------------------------------------------
 
 if __name__ == "__main__":
-    main()
+
+    try:
+        movies_df = load_movies()
+
+        print("\nDATASET SUMMARY")
+        print(dataset_summary(movies_df))
+
+        print("\nTOP RATED MOVIES")
+        print(top_rated_movies(movies_df))
+
+        print("\nLOWEST RATED MOVIES")
+        print(lowest_rated_movies(movies_df))
+
+        print("\nGENRE MOVIE COUNT")
+        print(genre_movie_count(movies_df))
+
+        print("\nGENRE AVERAGE RATINGS")
+        print(genre_average_rating(movies_df))
+
+        print("\nRATING DISTRIBUTION")
+        print(rating_distribution(movies_df))
+
+        print("\nMOVIES BY YEAR")
+        print(movies_by_year(movies_df))
+
+        print("\nMOST VOTED MOVIES")
+        print(most_voted_movies(movies_df))
+
+        print("\nEDA analysis completed successfully!")
+
+    except FileNotFoundError as error:
+        print(error)
